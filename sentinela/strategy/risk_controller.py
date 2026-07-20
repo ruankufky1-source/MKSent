@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timedelta
 from sentinela.schemas import RiskState, Candidate
 
 
@@ -55,5 +55,48 @@ def apply_risk(
     if halt_reason is not None:
         return RiskResult(approved=[], rejected=[], halted=True, halt_reason=halt_reason)
 
-    # Filtros por candidata entram na Task 5. Por ora, aprova todas.
-    return RiskResult(approved=list(candidates), rejected=[], halted=False, halt_reason=None)
+    approved: list[Candidate] = []
+    rejected: list[tuple[Candidate, str]] = []
+    # "agora" de referência: início do pregão no dia da rodada (08:00:30),
+    # suficiente pra checagem de intervalo numa rodada diária de swing.
+    now = datetime(today.year, today.month, today.day, 8, 0, 30)
+
+    for cand in candidates:
+        # 1. Blackout de earnings
+        ed = earnings_calendar.get(cand.ticker)
+        if ed is not None and 0 <= (ed - today).days <= cfg.earnings_blackout_days:
+            rejected.append((cand, f"blackout de earnings ({ed.isoformat()})"))
+            continue
+
+        # 2. Teto de concentração: v1 não aumenta posição já existente
+        if cand.ticker in state.open_positions:
+            rejected.append((cand, "concentração: já há posição no ticker"))
+            continue
+
+        # 3. Intervalo mínimo entre operações
+        if state.last_trade_at is not None:
+            elapsed = now - state.last_trade_at
+            if elapsed < timedelta(minutes=cfg.min_minutes_between_trades):
+                rejected.append((cand, f"intervalo mínimo entre operações ({elapsed})"))
+                continue
+
+        # 4. Dimensionamento por drawdown: encolhe o peso conforme a perda real
+        drawdown = (state.equity - state.peak_equity) / state.peak_equity
+        factor = max(0.0, 1.0 - abs(drawdown) / abs(cfg.max_drawdown))
+        scaled_weight = cand.target_weight * factor
+        if scaled_weight <= 0.0:
+            rejected.append((cand, "peso zerado pelo dimensionamento por drawdown"))
+            continue
+
+        # respeita o teto de concentração no peso final
+        final_weight = min(scaled_weight, cfg.max_position_weight)
+        approved.append(
+            Candidate(
+                ticker=cand.ticker,
+                action=cand.action,
+                target_weight=final_weight,
+                reason=cand.reason,
+            )
+        )
+
+    return RiskResult(approved=approved, rejected=rejected, halted=False, halt_reason=None)
