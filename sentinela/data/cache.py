@@ -1,6 +1,8 @@
 import sqlite3
 from datetime import datetime
 from sentinela.schemas import AnalyzedNews, NewsClassification, Confidence
+from sentinela.data.schemas import RawNews
+from sentinela.data.providers import Analyst
 
 
 class AnalystCache:
@@ -55,3 +57,30 @@ class AnalystCache:
             ),
         )
         self.conn.commit()
+
+
+class CachedAnalyst:
+    """Envolve um Analista, garantindo que cada notícia seja classificada
+    uma única vez. Só os misses vão ao Analista real, numa chamada em lote."""
+
+    def __init__(self, inner: Analyst, cache: AnalystCache):
+        self.inner = inner
+        self.cache = cache
+
+    def classify(self, news: list[RawNews]) -> list[AnalyzedNews]:
+        results: dict[str, AnalyzedNews] = {}
+        misses: list[RawNews] = []
+        for n in news:
+            hit = self.cache.get(n.news_id)
+            if hit is not None:
+                results[n.news_id] = hit
+            else:
+                misses.append(n)
+
+        if misses:
+            fresh = self.inner.classify(misses)   # uma única chamada em lote
+            for raw, analyzed in zip(misses, fresh):
+                self.cache.put(raw.news_id, analyzed)
+                results[raw.news_id] = analyzed
+
+        return [results[n.news_id] for n in news]
