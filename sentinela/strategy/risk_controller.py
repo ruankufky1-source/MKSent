@@ -23,20 +23,54 @@ class RiskResult:
     halt_reason: str | None
 
 
-def _global_halt_reason(state: RiskState, cfg: RiskConfig) -> str | None:
-    """Retorna o motivo se alguma trava global disparou, senão None."""
+# Nomes das regras de parada: um lugar só (usados também pelo agente Risk)
+DAILY_LOSS, WEEKLY_LOSS, DRAWDOWN = "daily_loss", "weekly_loss", "drawdown"
+CONSECUTIVE_LOSSES, TRADES = "consecutive_losses", "trades"
+
+
+@dataclass(frozen=True)
+class Halt:
+    rule: str       # uma das constantes acima
+    value: float    # valor cru que disparou a regra (fração, ou contagem)
+
+
+def global_halt(state: RiskState, cfg: RiskConfig) -> Halt | None:
+    """Primeira trava global disparada, na ordem diária > semanal > drawdown > perdas > trades."""
     if state.daily_pnl <= cfg.max_daily_loss:
-        return f"perda diária no limite ({state.daily_pnl:.2%})"
+        return Halt(DAILY_LOSS, state.daily_pnl)
     if state.weekly_pnl <= cfg.max_weekly_loss:
-        return f"perda semanal no limite ({state.weekly_pnl:.2%})"
+        return Halt(WEEKLY_LOSS, state.weekly_pnl)
     drawdown = (state.equity - state.peak_equity) / state.peak_equity
     if drawdown <= cfg.max_drawdown:
-        return f"drawdown no limite ({drawdown:.2%})"
+        return Halt(DRAWDOWN, drawdown)
     if state.consecutive_losses >= cfg.max_consecutive_losses:
-        return f"perdas consecutivas no limite ({state.consecutive_losses})"
+        return Halt(CONSECUTIVE_LOSSES, state.consecutive_losses)
     if state.trades_today >= cfg.max_trades_per_day:
-        return f"operações do dia no limite ({state.trades_today})"
+        return Halt(TRADES, state.trades_today)
     return None
+
+
+_HALT_TEXT = {
+    DAILY_LOSS: "perda diária no limite ({:.2%})",
+    WEEKLY_LOSS: "perda semanal no limite ({:.2%})",
+    DRAWDOWN: "drawdown no limite ({:.2%})",
+    CONSECUTIVE_LOSSES: "perdas consecutivas no limite ({})",
+    TRADES: "operações do dia no limite ({})",
+}
+
+
+def _global_halt_reason(state: RiskState, cfg: RiskConfig) -> str | None:
+    """Retorna o motivo se alguma trava global disparou, senão None."""
+    halt = global_halt(state, cfg)
+    if halt is None:
+        return None
+    return _HALT_TEXT[halt.rule].format(halt.value)
+
+
+def drawdown_factor(equity: float, peak_equity: float, max_drawdown: float) -> float:
+    """Fator 1.0 → 0.0 que encolhe o peso conforme o drawdown real se aproxima do limite."""
+    drawdown = (equity - peak_equity) / peak_equity
+    return max(0.0, 1.0 - abs(drawdown) / abs(max_drawdown))
 
 
 def apply_risk(
@@ -81,8 +115,7 @@ def apply_risk(
                 continue
 
         # 4. Dimensionamento por drawdown: encolhe o peso conforme a perda real
-        drawdown = (state.equity - state.peak_equity) / state.peak_equity
-        factor = max(0.0, 1.0 - abs(drawdown) / abs(cfg.max_drawdown))
+        factor = drawdown_factor(state.equity, state.peak_equity, cfg.max_drawdown)
         scaled_weight = cand.target_weight * factor
         if scaled_weight <= 0.0:
             rejected.append((cand, "peso zerado pelo dimensionamento por drawdown"))

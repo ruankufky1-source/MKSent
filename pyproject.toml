@@ -4,6 +4,9 @@ version = "0.1.0"
 description = "IA de trading autônomo (ações/ETFs EUA) — núcleo de decisão e risco"
 requires-python = ">=3.11"
 
+[project.optional-dependencies]
+dev = ["pytest>=9"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
