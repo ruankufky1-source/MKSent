@@ -1,4 +1,4 @@
-"""Sabotagem da entrega 1A: quebra o código de propósito, uma mudança por vez; a suíte tem que ficar vermelha.
+"""Sabotagem das entregas 1A e 1B: quebra o código de propósito, uma mudança por vez; a suíte tem que ficar vermelha.
 
 Cópia do arquivo antes de cada quebra; restaura sempre; resultado gravado linha a linha.
 Âncora que não aparece exatamente uma vez = PULADA (conta como problema, não como pega).
@@ -72,7 +72,7 @@ S = [
     ("S51", "5", T + "risk.py", 'pending_buys = sum((r["reserve"] for r in self.pending.values() if r["side"] == "buy"), D(0))', 'pending_buys = D(0)'),
     ("S52", "5", T + "risk.py", 'reserve = qty * price', 'reserve = qty'),
     ('S53', '5', 'sentinela/trading/risk.py', '        if filled_qty == 0:', '        if False:'),
-    ('S54', '5', 'sentinela/trading/risk.py', '            del self.pending[approval_id]\n            if rec["side"] == "buy" and rec["day"] == self.trade_day:', '            if rec["side"] == "buy" and rec["day"] == self.trade_day:'),
+    ('S54', '5', 'sentinela/trading/risk.py', '        if filled_qty == 0:  # nada mudou na carteira\n            self._drop(approval_id, rec)', '        if filled_qty == 0:  # nada mudou na carteira\n            pass'),
     ('S55', '5', 'sentinela/trading/risk.py', '        if filled_qty == 0:', '        if filled_qty >= 0:'),
     ('S56', '5', 'sentinela/trading/risk.py', 'if halt is not None and halt.rule == TRADES:', 'if False:'),
     ('S57', '5', 'sentinela/trading/risk.py', '        limit = self.halts.limit()\n        if limit:\n            return veto(limit[0].rule, limit[0].detail)\n', '        limit = self.halts.limit()\n        if limit:\n            return veto(limit[0].rule, limit[0].detail)\n        if halt is not None and halt.rule == TRADES:\n            return veto("trades_day", {})\n'),
@@ -152,19 +152,131 @@ S = [
     ('S131', 'R', 'sentinela/trading/risk.py', '        else:  # sair tem de ser possível mesmo se o ticker saiu da lista: vale a posição\n            qtd = _dec(p.get("qtd"))', '        else:\n            if ticker not in self.cfg.allowed_tickers:\n                return veto("ticker_fora_da_lista")\n            qtd = _dec(p.get("qtd"))'),
     ('S132', 'R', 'sentinela/trading/halts.py', 'KILL_SWITCH = "kill_switch"', 'KILL_SWITCH = "kill_switch_x"'),
     ('S133', 'C2', 'sentinela/trading/portfolio.py', '        if reset_id is not None:\n            self.reset_id = reset_id', '        if False:\n            self.reset_id = reset_id'),
-    ('S134', 'C3', 'sentinela/trading/risk.py', '        self._save_or_halt()\n        self._release_applied()\n\n    def clear_halt', '        self._save_or_halt()\n\n    def clear_halt'),
+    ('S134', 'C3', 'sentinela/trading/risk.py', '        self._save_or_halt()\n        self._release_applied()\n        return True', '        self._save_or_halt()\n        return True'),
     ('S135', 'R', 'sentinela/trading/risk.py', ' or not isinstance(ticker, str):', ':'),
+    # --- 1B -------------------------------------------------------------------------------------
+    ('S136', 'B1', T + 'broker.py', 'if req.qty > self.cfg.max_qty:', 'if False:'),
+    ('S137', 'B1', T + 'broker.py', 'if value > self.cfg.max_order_value:', 'if value >= self.cfg.max_order_value:'),
+    ('S138', 'B1', T + 'broker.py', 'if value > self.cfg.max_order_value:', 'if False:'),
+    ('S139', 'B1', T + 'broker.py', 'if req.ticker not in self.cfg.allowed_tickers:', 'if False:'),
+    ('S140', 'B1', T + 'broker.py', '        if req.side == "sell":\n            return', '        if False:\n            return'),
+    ('S141', 'B1', T + 'broker.py', 'if not _finite_positive(req.qty):', 'if req.qty is None:'),
+    ('S142', 'B1', T + 'broker.py', 'if not _finite_positive(req.ref_price):', 'if req.ref_price is None:'),
+    ('S143', 'B1', T + 'broker.py', 'if req.side not in ("buy", "sell"):', 'if False:'),
+    ('S144', 'B1', T + 'broker.py', 'return isinstance(x, D) and x.is_finite() and x > 0', 'return isinstance(x, D) and x.is_finite() and x >= 0'),
+    ('S145', 'B1', T + 'broker.py', '        if not self.allowed_tickers:', '        if False:'),
+    ('S146', 'B1', T + 'broker.py', '        self._check(req)\n        return await', '        return await'),
+    ('S147', 'B1', T + 'broker.py', 'if not _finite_positive(self.max_order_value) or not _finite_positive(self.max_qty):', 'if not _finite_positive(self.max_order_value):'),
+    ('S148', 'B6', T + 'simbroker.py', 'partial = self._rng.random() < self.partial_prob', 'partial = self._rng.random() < self.partial_prob * 2'),
+    ('S149', 'B4', T + 'simbroker.py', '        if req.client_order_id in self.orders:\n            raise DuplicateOrderId', '        if False:\n            raise DuplicateOrderId'),
+    ('S150', 'B6', T + 'simbroker.py', 'if partial and req.qty >= 2:', 'if partial:'),
+    ('S151', 'B6', T + 'simbroker.py', 'first = req.qty // 2', 'first = req.qty // 3'),
+    ('S152', 'B6', T + 'simbroker.py', '        if self._pos[t] == 0:\n            del self._pos[t]', '        if False:\n            del self._pos[t]'),
+    ('S153', 'E1', T + 'execution.py', 'if not isinstance(guard, GuardedBroker):', 'if False:'),
+    ('S154', 'E2', T + 'execution.py', 'return f"{ID_PREFIX}-{approved_seq}-{ticker}-{side}"', 'return f"{ID_PREFIX}-{ticker}-{side}"'),
+    ('S155', 'E2', T + 'execution.py', '            if cid in self.orders:\n                self.pub.publish(ORDER_EVENT_IGNORED', '            if False:\n                self.pub.publish(ORDER_EVENT_IGNORED'),
+    ('S156', 'E5', T + 'execution.py', 'if not self.reconciled:\n                self._not_sent(rec, "sem_reconciliacao")', 'if False:\n                self._not_sent(rec, "sem_reconciliacao")'),
+    ('S157', 'E5', T + 'execution.py', 'if not 0 <= age <= self.approval_ttl:', 'if not 0 <= age < self.approval_ttl:'),
+    ('S158', 'E5', T + 'execution.py', 'if not 0 <= age <= self.approval_ttl:', 'if not age <= self.approval_ttl:'),
+    ('S159', 'E5', T + 'execution.py', 'if not 0 <= age <= self.approval_ttl:', 'if not 0 <= age:'),
+    ('S161', 'E3', T + 'execution.py', '            self.pub.publish(ORDER_INTENT, {\n                "client_order_id": cid, "approval_id": rec["approval_id"], "ticker": ticker,\n                "side": side, "qtd": str(qty), "ref_price": str(price)}, ev["correlation_id"], ev["seq"])\n', '            pass\n'),
+    ('S162', 'E5', T + 'execution.py', '            if self.kill_path.exists():', '            if False:'),
+    ('S163', 'E5', T + 'execution.py', '            if self.halts.integrity():\n                blocked = "halt_integridade"', '            if False:\n                blocked = "halt_integridade"'),
+    ('S164', 'E5', T + 'execution.py', 'elif side == "buy" and self.halts.limit():', 'elif self.halts.limit():'),
+    ('S165', 'E5', T + 'execution.py', 'elif side == "buy" and self.halts.limit():', 'elif False:'),
+    ('S166', 'E5', T + 'execution.py', '            if blocked:\n                self._not_sent(rec, blocked)\n                return', '            if blocked:\n                return'),
+    ('S168', 'E4', T + 'execution.py', '            async with asyncio.timeout(self.broker_timeout):\n                order = await self.guard.submit(req)', '            if True:\n                order = await self.guard.submit(req)'),
+    ('S169', 'E1', T + 'execution.py', 'self.bus.halt("guard_recusou", INTEGRITY, {"rule": e.rule, **e.detail})', 'pass'),
+    ('S170', 'E1', T + 'execution.py', 'self._not_sent(rec, f"guard:{e.rule}")', 'pass'),
+    ('S171', 'E4', T + 'execution.py', 'outcome, order = "duplicate_adopted", await self._resolve(cid, rec)', 'outcome, order = "duplicate_adopted", None'),
+    ('S172', 'E4', T + 'execution.py', 'outcome, order = "found_after_timeout", await self._resolve(cid, rec)', 'outcome, order = "found_after_timeout", None'),
+    ('S173', 'E4', T + 'execution.py', '_BROKER_ERRORS = (TimeoutError, BrokerError, OSError)', '_BROKER_ERRORS = (TimeoutError, BrokerError)'),
+    ('S174', 'E4', T + 'execution.py', '        rec["state"] = AMBIGUOUS\n        self._persist()', '        self._persist()'),
+    ('S175', 'E4', T + 'execution.py', '            self.bus.halt("envio_ambiguo", INTEGRITY, {"client_order_id": cid})', '            pass'),
+    ('S176', 'E4', T + 'execution.py', '        if order is not None:\n            self._adopt(cid, rec, order, outcome)', '        if order is not None and False:\n            self._adopt(cid, rec, order, outcome)'),
+    ('S177', 'E4', T + 'execution.py', 'if (order.ticker, order.side, order.qty) != (rec["ticker"], rec["side"], qty):', 'if False:'),
+    ('S178', 'E6', T + 'execution.py', 'if order.status not in OPEN_STATUSES | TERMINAL:', 'if False:'),
+    ('S179', 'E6', T + 'execution.py', 'or f > qty:', ':'),
+    ('S180', 'E6', T + 'execution.py', '        if f < published:', '        if False:'),
+    ('S181', 'E6', T + 'execution.py', '        if f > 0 and not (isinstance(order.filled_avg_price, D)', '        if False and not (isinstance(order.filled_avg_price, D)'),
+    ('S182', 'E6', T + 'execution.py', 'if order.status == "filled" and f != qty:', 'if False:'),
+    ('S183', 'E6', T + 'execution.py', 'if not price.is_finite() or price <= 0:', 'if not price.is_finite():'),
+    ('S184', 'E6', T + 'execution.py', 'price = (order.filled_qty * order.filled_avg_price - pub_v) / delta', 'price = order.filled_avg_price'),
+    ('S185', 'E6', T + 'execution.py', 'self._published[aid] = (order.filled_qty, pub_v + delta * price)', 'self._published[aid] = (order.filled_qty, pub_v)'),
+    ('S186', 'E6', T + 'execution.py', '            if aid not in self._closed_in_log:\n                self._close(rec, order.status, order.filled_qty)', '            self._close(rec, order.status, order.filled_qty)'),
+    ('S187', 'E6', T + 'execution.py', '            rec["state"] = CLOSED\n            self._persist()', '            self._persist()'),
+    ('S188', 'E6', T + 'execution.py',
+     '        if delta > 0:\n            self.pub.publish(FILL, {"approval_id": aid, "ticker": rec["ticker"], "side": rec["side"],\n                                    "qty": str(delta), "price": str(price)},\n                             rec["correlation_id"], rec["approved_seq"])\n            self._published[aid] = (order.filled_qty, pub_v + delta * price)\n        if order.status in TERMINAL:\n            if aid not in self._closed_in_log:\n                self._close(rec, order.status, order.filled_qty)\n',
+     '        if order.status in TERMINAL:\n            if aid not in self._closed_in_log:\n                self._close(rec, order.status, order.filled_qty)\n        if delta > 0:\n            self.pub.publish(FILL, {"approval_id": aid, "ticker": rec["ticker"], "side": rec["side"],\n                                    "qty": str(delta), "price": str(price)},\n                             rec["correlation_id"], rec["approved_seq"])\n            self._published[aid] = (order.filled_qty, pub_v + delta * price)\n        if order.status in TERMINAL:\n'),
+    ('S189', 'E6', T + 'execution.py', '"qty": str(delta), "price": str(price)},\n                             rec["correlation_id"], rec["approved_seq"])', '"qty": str(delta), "price": str(price)},\n                             None, None)'),
+    ('S190', 'E5', T + 'execution.py', '        if rec["approval_id"] not in self._closed_in_log:\n            self._close(rec, status, D(0), reason)', '        pass'),
+    ('S191', 'E6', T + 'execution.py', 'for cid in [c for c, r in self.orders.items() if r["state"] == OPEN]:', 'for cid in [c for c, r in self.orders.items() if r["state"] != CLOSED]:'),
+    ('S192', 'E6', T + 'execution.py', '                    self.pub.publish(POLL_FAILED, {"client_order_id": cid, "error": why},\n                                     rec["correlation_id"], rec["approved_seq"])', '                    pass'),
+    ('S193', 'E6', T + 'execution.py', '                self.bus.halt("agente_execution_caiu", INTEGRITY, {"error": _describe(e)})\n                return', '                return'),
+    ('S194', 'E7', T + 'execution.py', '            async with self._lock(cid):\n                rec = self.orders[cid]\n                try:\n                    order = await self._lookup(cid)\n                except _BROKER_ERRORS as e:\n                    order, why', '            async with asyncio.Lock():\n                rec = self.orders[cid]\n                try:\n                    order = await self._lookup(cid)\n                except _BROKER_ERRORS as e:\n                    order, why'),
+    ('S195', 'E7', T + 'execution.py', '            async with self._lock(cid):\n                rec = self.orders[cid]\n                if rec["state"] not in _LIVE:', '            async with asyncio.Lock():\n                rec = self.orders[cid]\n                if rec["state"] not in _LIVE:'),
+    ('S196', 'R8', T + 'execution.py', '        self._close_approvals_without_state()\n', '        pass\n'),
+    ('S197', 'R8', T + 'execution.py', '        await self.bus.drain()\n        divs += await self._compare()', '        divs += await self._compare()'),
+    ('S198', 'R8', T + 'execution.py', '                        self._not_sent(rec, "nao_encontrada_na_reconciliacao")', '                        pass'),
+    ('S199', 'R8', T + 'execution.py', '                        divs.append({"kind": "ordem_sumiu", "client_order_id": cid})', '                        pass'),
+    ('S200', 'R8', T + 'execution.py', '                if rec["state"] == INVALID:', '                if False:'),
+    ('S201', 'R8', T + 'execution.py', '        if divs and halt:', '        if False:'),
+    ('S202', 'R8', T + 'execution.py', '        if not divs:\n            self.reconciled = True\n', '        if True:\n            self.reconciled = True\n'),
+    ('S203', 'R8', T + 'execution.py', '            if b != m:', '            if False:'),
+    ('S204', 'R8', T + 'execution.py', '            if rec is None:\n                divs.append({"kind": "ordem_desconhecida"', '            if False:\n                divs.append({"kind": "ordem_desconhecida"'),
+    ('S205', 'R8', T + 'execution.py', '            elif rec["state"] in (CLOSED, NOT_SENT):', '            elif False:'),
+    ('S206', 'R8', T + 'execution.py', '                    divs.append({"kind": "corretora_indisponivel", "error": str(e)})\n                    break', '                    break'),
+    ('S207', 'R8', T + 'execution.py', '            return [{"kind": "corretora_indisponivel", "error": str(e)}]', '            return []'),
+    ('S208', 'R8', T + 'execution.py', '                if rec["state"] in (INTENT, AMBIGUOUS):\n                    self._adopt(cid, rec, order, "adopted_on_reconcile")', '                if False:\n                    self._adopt(cid, rec, order, "adopted_on_reconcile")'),
+    ('S209', 'R8', T + 'execution.py', '            if r["type"] != ORDER_APPROVED or p.get("approval_id") in self._closed_in_log:', '            if r["type"] != ORDER_APPROVED:'),
+    ('S210', 'R9', T + 'execution.py', '        if not self.halts.integrity():\n            return risk_agent.clear_halt(who, reason)', '        if True:\n            return risk_agent.clear_halt(who, reason, reconciled=True)'),
+    ('S211', 'R9', T + 'execution.py', '        if divs:\n            self.pub.publish(HALT_CLEAR_REFUSED', '        if False:\n            self.pub.publish(HALT_CLEAR_REFUSED'),
+    ('S212', 'R9', T + 'execution.py', '            self.pub.publish(HALT_CLEAR_REFUSED, {"who": who, "reason": reason, "divergences": divs},\n                             correlation_id="halt:all")', '            pass'),
+    ('S213', 'R9', T + 'execution.py', '            raise ReconciliationFailed(divs)', '            pass'),
+    ('S214', 'E6', T + 'execution.py', '                self._closed_in_log.add(p["approval_id"])', '                pass'),
+    ('S215', 'E6', T + 'execution.py', 'self._published[p["approval_id"]] = (q + D(p["qty"]), v + D(p["qty"]) * D(p["price"]))', 'self._published[p["approval_id"]] = (D(p["qty"]), v + D(p["qty"]) * D(p["price"]))'),
+    ('S216', 'R8', T + 'execution.py', 'self.halts.raise_safe("execution_estado_ausente", INTEGRITY)', 'pass'),
+    ('S217', 'R8', T + 'execution.py', 'self.halts.raise_safe("execution_estado_corrompido", INTEGRITY)', 'pass'),
+    ('S218', 'E1', T + 'execution.py', '            self.bus.halt("aprovacao_invalida", INTEGRITY, {"payload": str(p)[:LOG_PAYLOAD_CHARS]})', '            pass'),
+    ('S219', 'E5', 'sentinela/trading/clock.py', 'self._offset_s += seconds', 'self._offset_s -= seconds'),
+    ('S220', 'E3', 'sentinela/trading/bus.py', '    ORDER_INTENT: {"execution"},', '    ORDER_INTENT: {"strategy"},'),
+    ('S221', 'R10', T + 'risk.py', '        if rec is None or rec["closed_seq"] is not None:\n            return False', '        if rec is None:\n            return False'),
+    ('S222', 'R7', T + 'risk.py', '        rec["fills"].append((seq, qty))', '        pass'),
+    ('S223', 'R7', T + 'risk.py', 'done = sum((q for s, q in rec["fills"] if s <= applied), D(0))', 'done = sum((q for s, q in rec["fills"]), D(0))'),
+    ('S224', 'R7', T + 'risk.py', 'done = sum((q for s, q in rec["fills"] if s <= applied), D(0))', 'done = D(0)'),
+    ('S225', 'R7', T + 'risk.py', 'return max(D(0), rec["qty"] - done)', 'return rec["qty"] - done'),
+    ('S226', 'R10', T + 'risk.py', '        if rec["side"] == "buy" and rec["day"] == self.trade_day:\n            self.trades_today = max(0, self.trades_today - 1)', '        if rec["side"] == "buy":\n            self.trades_today = max(0, self.trades_today - 1)'),
+    ('S227', 'R10', T + 'risk.py', '        if rec["side"] == "buy" and rec["day"] == self.trade_day:\n            self.trades_today = max(0, self.trades_today - 1)', '        if rec["day"] == self.trade_day:\n            self.trades_today = max(0, self.trades_today - 1)'),
+    ('S228', 'R10', T + 'risk.py', 'orphans = [k for k in self.pending if k not in logged_approvals]', 'orphans = [k for k in self.pending if k in logged_approvals]'),
+    ('S229', 'R9', T + 'risk.py', '        if self.halts.integrity() and not reconciled:', '        if False:'),
+    ('S230', 'R9', T + 'risk.py', '        if self.halts.integrity() and not reconciled:', '        if self.halts.integrity():'),
+    ('S231', 'R7', T + 'risk.py', 'subscribes=[SIGNAL_PROPOSED, PORTFOLIO_UPDATED, ORDER_CLOSED, FILL])', 'subscribes=[SIGNAL_PROPOSED, PORTFOLIO_UPDATED, ORDER_CLOSED])'),
+    ('S232', 'R10', T + 'risk.py', '            if not self.risk.on_order_closed(p["approval_id"], qty, ev["seq"]):', '            if False:'),
+    ('S233', 'R10', T + 'risk.py', '            if not self.risk.on_fill(p["approval_id"], qty, ev["seq"]):', '            if False:'),
+    ('S234', 'R10', T + 'risk.py', 'if r["type"] == ORDER_APPROVED}', 'if r["type"] == ORDER_VETOED}'),
+    ('S235', 'R10', T + 'risk.py', '            self.pub.publish(PENDING_ORPHANED, {"approval_id": approval_id},\n                             correlation_id=f"orphan:{approval_id}")', '            pass'),
+    ('S236', 'R7', T + 'risk.py', '"fills": [(int(s), D(q)) for s, q in r.get("fills", [])]}', '"fills": []}'),
+    ('S237', 'R7', T + 'risk.py', '"fills": [[s, str(q)] for s, q in r["fills"]]}', '"fills": []}'),
+    ('S238', 'R11', T + 'execution.py', '            self._frozen = True', '            pass'),
+    ('S239', 'R11', T + 'execution.py', '        if self._frozen:', '        if False:'),
+    ('S240', 'R11', T + 'execution.py', '            if not self.path.exists():   # estado ausente', '            if False:   # estado ausente'),
 ]
 
 
 def run_pytest():
     env = dict(os.environ)
     env["PYTHONPYCACHEPREFIX"] = tempfile.mkdtemp(prefix="sabot-pyc-")
+    p = None
     try:
-        p = subprocess.run([str(PY), "-m", "pytest", "-x", "-q", "-p", "no:cacheprovider"],
-                           cwd=ROOT, env=env, capture_output=True, text=True, timeout=120)
-    except subprocess.TimeoutExpired:
-        return "PEGA(travou)", "timeout"
+        for _ in range(2):  # o Windows às vezes trava ao criar o laço de eventos: só vale travar duas vezes
+            try:
+                p = subprocess.run([str(PY), "-m", "pytest", "-x", "-q", "-p", "no:cacheprovider"],
+                                   cwd=ROOT, env=env, capture_output=True, text=True, timeout=120)
+                break
+            except subprocess.TimeoutExpired:
+                continue
+        else:
+            return "PEGA(travou)", "timeout duas vezes"
     finally:
         shutil.rmtree(env["PYTHONPYCACHEPREFIX"], ignore_errors=True)
     lines = [ln for ln in p.stdout.splitlines() if ln.startswith(("FAILED", "ERROR"))]

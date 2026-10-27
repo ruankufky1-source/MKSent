@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 
 SIM_HOUR_UTC = 15  # hora fixa do relógio de teste
@@ -12,16 +12,21 @@ class SimClock:
 
     def __init__(self, ny_date: date):
         self._date = ny_date
+        self._offset_s = 0
 
     def set_date(self, d: date) -> None:
         self._date = d
+
+    def advance(self, seconds: float) -> None:
+        self._offset_s += seconds
 
     def ny_date(self) -> date:
         return self._date
 
     def now(self) -> datetime:
         d = self._date
-        return datetime(d.year, d.month, d.day, SIM_HOUR_UTC, 0, tzinfo=timezone.utc)
+        return (datetime(d.year, d.month, d.day, SIM_HOUR_UTC, 0, tzinfo=timezone.utc)
+                + timedelta(seconds=self._offset_s))
 
 
 def week_key(d: date) -> str:

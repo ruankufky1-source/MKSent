@@ -11,9 +11,10 @@ from sentinela.strategy.risk_controller import (
     global_halt,
 )
 from sentinela.trading import store
+from sentinela.trading.audit import read_log
 from sentinela.trading.events import (
-    ORDER_APPROVED, ORDER_CLOSED, ORDER_VETOED, PORTFOLIO_UPDATED, RISK_RESET_REQUESTED,
-    SIGNAL_PROPOSED,
+    FILL, ORDER_APPROVED, ORDER_CLOSED, ORDER_EVENT_IGNORED, ORDER_VETOED, PENDING_ORPHANED,
+    PORTFOLIO_UPDATED, RISK_RESET_REQUESTED, SIGNAL_PROPOSED,
 )
 from sentinela.trading.halts import INTEGRITY, KILL_SWITCH, LIMIT
 from sentinela.trading.store import StateCorrupt, StateWriteError, require_absolute
@@ -23,6 +24,10 @@ FILTROS_INATIVOS = ["earnings_blackout", "min_interval"]
 STATE_WRITE_FAILED = "state_write_failed"
 
 _SCOPE = {DAILY_LOSS: "day", WEEKLY_LOSS: "week"}
+
+
+class ReconciliationRequired(Exception):
+    """clear_halt de uma trava de integridade sem a corretora ter sido conferida antes."""
 
 
 @dataclass(frozen=True)
@@ -87,7 +92,8 @@ class Risk:
             self.trade_day, self.trades_today = o["trade_day"], int(o["trades_today"])
             self.pending = {k: {"side": r["side"], "ticker": r["ticker"], "qty": D(r["qty"]),
                                 "reserve": D(r["reserve"]), "day": r["day"],
-                                "closed_seq": r["closed_seq"]}
+                                "closed_seq": r["closed_seq"],
+                                "fills": [(int(s), D(q)) for s, q in r.get("fills", [])]}
                             for k, r in o["pending"].items()}
         except (StateCorrupt, KeyError, TypeError, ValueError, InvalidOperation):
             self._halt("risk_estado_corrompido", INTEGRITY)
@@ -97,7 +103,8 @@ class Risk:
             "trade_day": self.trade_day, "trades_today": self.trades_today,
             "pending": {k: {"side": r["side"], "ticker": r["ticker"], "qty": str(r["qty"]),
                             "reserve": str(r["reserve"]), "day": r["day"],
-                            "closed_seq": r["closed_seq"]}
+                            "closed_seq": r["closed_seq"],
+                            "fills": [[s, str(q)] for s, q in r["fills"]]}
                         for k, r in self.pending.items()},
         })
 
@@ -133,21 +140,50 @@ class Risk:
         if done:
             self._save_or_halt()
 
-    def on_order_closed(self, approval_id: str, filled_qty: D, seq: int | None = None) -> None:
+    def _drop(self, approval_id: str, rec: dict) -> None:
+        """Solta a reserva e, se era compra do dia, o trade."""
+        del self.pending[approval_id]
+        if rec["side"] == "buy" and rec["day"] == self.trade_day:
+            self.trades_today = max(0, self.trades_today - 1)
+
+    def on_order_closed(self, approval_id: str, filled_qty: D, seq: int | None = None) -> bool:
+        """False se o id é desconhecido ou o fechamento já foi recebido (o agente registra no log)."""
         rec = self.pending.get(approval_id)
-        if rec is None:
-            return
-        if filled_qty == 0:  # nada mudou na carteira: libera reserva e, se era compra, o trade do dia
-            del self.pending[approval_id]
-            if rec["side"] == "buy" and rec["day"] == self.trade_day:
-                self.trades_today = max(0, self.trades_today - 1)
+        if rec is None or rec["closed_seq"] is not None:
+            return False
+        if filled_qty == 0:  # nada mudou na carteira
+            self._drop(approval_id, rec)
         else:  # segura até a foto refletir o fill; senão a posição velha deixaria vender além do que há
             rec["closed_seq"] = seq if seq is not None else 0
         self._save_or_halt()
         self._release_applied()
+        return True
 
-    def clear_halt(self, who: str, reason: str):
-        """Solta as travas (registrado antes) e passa a ignorar fotos até chegar a que reflete o pedido."""
+    def on_fill(self, approval_id: str, qty: D, seq: int) -> bool:
+        """Guarda o fill com o seq dele: só desconta da venda aberta quando a foto o alcança. Na compra
+        a guarda não muda nada: a reserva fica inteira até fechar (conservador). False se o id é desconhecido."""
+        rec = self.pending.get(approval_id)
+        if rec is None:
+            return False
+        rec["fills"].append((seq, qty))
+        self._save_or_halt()
+        return True
+
+    def release_orphans(self, logged_approvals: set) -> list[str]:
+        """Pendência gravada em disco cuja aprovação nunca chegou ao log (queda entre gravar e publicar):
+        nunca foi enviada, então a reserva e o trade voltam."""
+        orphans = [k for k in self.pending if k not in logged_approvals]
+        for k in orphans:
+            self._drop(k, self.pending[k])
+        if orphans:
+            self._save_or_halt()
+        return orphans
+
+    def clear_halt(self, who: str, reason: str, reconciled: bool = False):
+        """Solta as travas (registrado antes) e passa a ignorar fotos até chegar a que reflete o pedido.
+        Trava de integridade só sai com a corretora conferida (`reconciled`): quem confere é o Execution."""
+        if self.halts.integrity() and not reconciled:
+            raise ReconciliationRequired("halt de integridade ativo: reconcilie com a corretora antes")
         cleared = self.halts.clear(who, reason)  # se falhar, nada foi limpo
         self.view = None
         self._awaiting_reset = uuid.uuid4().hex
@@ -261,7 +297,7 @@ class Risk:
         ticker, p = sig["payload"]["ticker"], sig["payload"]
         pos = positions.get(ticker)
         held = D(str(pos["qty"])) if pos else D(0)
-        open_sells = sum((r["qty"] for r in self.pending.values()
+        open_sells = sum((self._open_sell_qty(r) for r in self.pending.values()
                           if r["side"] == "sell" and r["ticker"] == ticker), D(0))
         if qtd > held - open_sells:
             return veto("sell_excede", {"qtd": str(qtd), "posicao": str(held),
@@ -272,9 +308,16 @@ class Risk:
         return self._commit(approval_id, "sell", ticker, qtd, D(str(pos["mark"])), D(0), inputs,
                             veto, {})
 
+    def _open_sell_qty(self, rec: dict) -> D:
+        """O que falta vender: desconta só os fills que a foto da carteira já aplicou (seq <= applied_seq);
+        descontar antes deixaria a posição velha vender além do que há."""
+        applied = self.view.get("applied_seq", 0)
+        done = sum((q for s, q in rec["fills"] if s <= applied), D(0))
+        return max(D(0), rec["qty"] - done)
+
     def _commit(self, approval_id, side, ticker, qty, price, reserve, inputs, veto, extra):
         self.pending[approval_id] = {"side": side, "ticker": ticker, "qty": qty, "reserve": reserve,
-                                     "day": self.trade_day, "closed_seq": None}
+                                     "day": self.trade_day, "closed_seq": None, "fills": []}
         if side == "buy":
             self.trades_today += 1
         try:
@@ -294,14 +337,20 @@ class RiskAgent:
     def __init__(self, risk: Risk, bus):
         self.risk, self.bus = risk, bus
         self.pub = bus.register("risk", self.handle, critical=True,
-                                subscribes=[SIGNAL_PROPOSED, PORTFOLIO_UPDATED, ORDER_CLOSED])
+                                subscribes=[SIGNAL_PROPOSED, PORTFOLIO_UPDATED, ORDER_CLOSED, FILL])
 
     async def handle(self, ev: dict) -> None:
         p = ev["payload"]
         if ev["type"] == PORTFOLIO_UPDATED:
             self.risk.on_view(p)
         elif ev["type"] == ORDER_CLOSED:
-            self.risk.on_order_closed(p["approval_id"], D(str(p["filled_qty"])), ev["seq"])
+            qty = D(str(p["filled_qty"]))
+            if not self.risk.on_order_closed(p["approval_id"], qty, ev["seq"]):
+                self._ignored(ev, ORDER_CLOSED, qty)
+        elif ev["type"] == FILL:
+            qty = D(str(p["qty"]))
+            if not self.risk.on_fill(p["approval_id"], qty, ev["seq"]):
+                self._ignored(ev, FILL, qty)
         else:
             kind, payload = self.risk.decide(ev)
             try:
@@ -312,10 +361,27 @@ class RiskAgent:
                     self.risk.on_order_closed(payload["approval_id"], D(0))
                 raise
 
-    def clear_halt(self, who: str, reason: str):
+    def _ignored(self, ev: dict, kind: str, qty: D) -> None:
+        """Id desconhecido (ou fechamento repetido): não muda nada, mas fica no log."""
+        p = ev["payload"]
+        self.pub.publish(ORDER_EVENT_IGNORED, {
+            "event": kind, "approval_id": p["approval_id"], "qty": str(qty), "status": p.get("status")},
+            ev["correlation_id"], ev["seq"])
+
+    def release_orphans(self) -> list[str]:
+        """Na partida: devolve a reserva de toda pendência cuja aprovação não está no log."""
+        logged = {r["payload"].get("approval_id") for r in read_log(self.bus.audit.path)
+                  if r["type"] == ORDER_APPROVED}
+        released = self.risk.release_orphans(logged)
+        for approval_id in released:
+            self.pub.publish(PENDING_ORPHANED, {"approval_id": approval_id},
+                             correlation_id=f"orphan:{approval_id}")
+        return released
+
+    def clear_halt(self, who: str, reason: str, reconciled: bool = False):
         """Solta as travas e pede ao Portfolio o que cada uma exige (drawdown: refazer o pico;
         perdas seguidas: zerar a sequência). Só pode ser chamado de dentro do loop de eventos."""
-        cleared, reset_id = self.risk.clear_halt(who, reason)
+        cleared, reset_id = self.risk.clear_halt(who, reason, reconciled)
         rules = {r.rule for r in cleared}
         self.pub.publish(RISK_RESET_REQUESTED, {
             "peak": DRAWDOWN in rules, "losses": CONSECUTIVE_LOSSES in rules,

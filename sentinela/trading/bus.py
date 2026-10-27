@@ -8,8 +8,9 @@ from pathlib import Path
 
 from sentinela.trading.audit import AuditError
 from sentinela.trading.events import (
-    FILL, MARK_PRICE, ORDER_APPROVED, ORDER_CLOSED, ORDER_VETOED, PORTFOLIO_UPDATED,
-    RISK_RESET_REQUESTED, SIGNAL_PROPOSED,
+    FILL, HALT_CLEAR_REFUSED, MARK_PRICE, ORDER_APPROVED, ORDER_CLOSED, ORDER_EVENT_IGNORED,
+    ORDER_INTENT, ORDER_SUBMITTED, ORDER_VETOED, PENDING_ORPHANED, POLL_FAILED, PORTFOLIO_UPDATED,
+    RECONCILED, RISK_RESET_REQUESTED, SIGNAL_PROPOSED,
 )
 from sentinela.trading.halts import INTEGRITY, KILL_SWITCH, LIMIT
 
@@ -29,6 +30,13 @@ ALLOWED_PUBLISHERS = {
     ORDER_VETOED: {"risk"},
     RISK_RESET_REQUESTED: {"risk"},
     PORTFOLIO_UPDATED: {"portfolio"},
+    ORDER_INTENT: {"execution"},
+    ORDER_SUBMITTED: {"execution"},
+    RECONCILED: {"execution"},
+    HALT_CLEAR_REFUSED: {"execution"},
+    POLL_FAILED: {"execution"},
+    ORDER_EVENT_IGNORED: {"risk", "execution"},
+    PENDING_ORPHANED: {"risk"},
 }
 
 
